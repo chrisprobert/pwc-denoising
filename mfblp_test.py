@@ -122,7 +122,16 @@ class TestMfblp(unittest.TestCase):
 
         f = mfblp_filter(w=9, s=s, a=.1, b=10.)
         m = f.apply(x)
-        self.assertTrue((np.abs(m - x) > 0.5).nonzero()[0].shape[0] < 5)    
+        self.assertTrue((np.abs(m - x) > 0.5).nonzero()[0].shape[0] < 5)
+
+    def test_apply_restrict(self) :
+        x = np.array([12] * 100 + [20] * 100 + [15] * 100).astype(float)
+        s = np.array([9.5, 10, 12, 15, 16, 19, 20, 21]).astype(float)
+
+        f = mfblp_filter(w=5, s=s, a=.1, b=1.)
+        m = f.apply_restrict(x)
+        self.assertTrue((np.abs(m - x) > 0.1).nonzero()[0].shape[0] < 3)
+  
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,6 +1,7 @@
 from __future__ import division
 
 import numpy as np
+from scipy.ndimage.filters import median_filter
 
 class mfblp_filter(object) :
 
@@ -19,8 +20,11 @@ class mfblp_filter(object) :
         self.a = a
         self.b = b
 
-    def apply(self, x, numiter=2000) :
+    def apply(self, x, numiter=200) :
         '''
+        Apply the filter by searching entire range of S and M_{i}. Note that
+        apply_restrict() is significantly faster at the same MAE.
+
         paramters:
             x - ndarray; sparse signal to be filtered
             numiter - int (optional); maximum number of search iterations
@@ -41,6 +45,47 @@ class mfblp_filter(object) :
         m = self.search(x, m - first_stepsize, second_stepsize, steps)
         return m
     
+    def apply_restrict(self, x, numiter=20) :
+        '''
+            Applies the filter, but only searches output points between the median
+            of each window and the closest point in s. This search space is 
+            smaller than the full range in apply(), and covers the expected
+            filter output for any valid self.a mixture paramter. If the signal is
+            equidistant from two points in S, selection is performed according to
+            numpy.argmin, which defaults to the value with the lowest index (so,
+            if S is sorted, default behavior for equidistant S points is to
+            select the lesser value). On benchmarking for the same MAE, this is
+            around 10X faster than the apply() method (but compartive speed
+            depends on density of points in S relative to M).
+
+            paramters:
+                x - ndarray; sparse signal to be filtered
+                numiter - int (optional); maximum number of search iterations
+
+            returns :
+                m - ndarray; best filtered signal
+        '''
+        medians = median_filter(x, self.hw * 2)
+        median_dists = np.abs(medians[:,None] - self.s)
+        closest_s_indexes = np.argmin(median_dists, axis=1)
+        closest_s = self.s[closest_s_indexes]
+        
+        starts = np.zeros(x.shape)
+        closest_s_smaller = closest_s < medians
+        starts[closest_s_smaller] = closest_s[closest_s_smaller]
+        starts[closest_s_smaller == False] = medians[closest_s_smaller == False]
+
+        steps = numiter // 2
+        stepsizes = np.abs(closest_s - medians)
+        first_stepsize = stepsizes / steps
+        second_stepsize = (first_stepsize * 2) / steps
+
+        # first round, course search
+        m = self.search(x, starts, first_stepsize, steps)
+        # second round, fine search
+        m = self.search(x, m - first_stepsize, second_stepsize, steps)
+        return m
+
     @classmethod
     def roll_sum(cls, x, m, hw) :
         '''return an array of the cummulative absolute errors for the point
